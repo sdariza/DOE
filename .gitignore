@@ -1,2 +1,5 @@
 *.nc
 .ipynb_checkpoints
+*gif
+data/
+imgs/
