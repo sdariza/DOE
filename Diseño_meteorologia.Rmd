@@ -1,0 +1,195 @@
+---
+title: "Diseño y Análisis de Experimentos"
+subtitle: "Diseño Factorial"
+author:
+  - Sebastian Ariza y Yanina lopez^[Estudiantes, Departamento de Ingeniería Industrial, Universidad del Norte, Barranquilla, Colombia.]
+fontsize: 13pt
+header-includes:
+  - \usepackage{amssymb}
+  - \usepackage{latexsym}
+  - \usepackage{amsmath} 
+  - \usepackage{amsthm} 
+  - \usepackage{bm} 
+date: "Marzo 1, 2022"
+lang: "es-ES"
+output: 
+  html_document: 
+    theme: readable #default, cerulean, journal, flatly, darkly, readable, spacelab, united, cosmo, lumen, paper, sandstone, simplex, and yeti.
+    highlight: textmate # default, tango, pygments, kate, monochrome, espresso, zenburn, haddock, breezedark, and textmate
+    number_sections: false
+    fig_caption: true
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(warn = -1)
+```
+
+<hr>
+
+
+## Análisis del Experimento
+
+### Lectura de datos
+
+```{r}
+datos <- read.table("C:/Users/JHON G. BOTELLO/OneDrive - Universidad del Norte/Escritorio/DATOS.txt",header = TRUE)
+
+
+## convert 'A' and 'B' to factors
+datos$A <- as.factor(datos$A)
+datos$B <- as.factor(datos$B)
+
+datos$C <- as.numeric(datos$C)
+
+datos <- na.omit(datos)
+
+summary(datos)
+```
+
+El número de réplicas puede obtenerse haciendo:
+
+```{r}
+## replicates per combination
+with(datos, tapply(C, list(A, B), length))
+```
+
+El número total de unidades experimentales es
+
+```{r}
+## how many runs?
+NROW(datos)
+```
+
+
+Como se discutió anteriormente, una vez leídos los datos procedemos a visualizarlos:
+
+
+```{r, message=FALSE, fig.width = 7, fig.height = 4.5, fig.align = 'center'}
+## boxplots for main effects
+par(mfrow = c(1, 2))
+boxplot(C ~ A, data = datos, las = 1, col = 2:4, 
+        xlab = 'A', ylab = 'C')
+
+boxplot(C ~ B, data = datos, las = 1, col = 2:4, 
+        xlab = 'B', ylab = 'C')
+```
+
+
+La otra posibilidad es evaluar la existencia de posibles efectos de interacción entre `A` y `B`:
+
+```{r, message=FALSE, fig.width = 7, fig.height = 6, fig.align = 'center'}
+## boxplot for interactions
+par(mfrow = c(1, 1))
+boxplot(C ~ A*B, 
+        data = datos, las = 1, col = 2:4, 
+        xlab = 'A/B', ylab = 'C')
+```
+
+Este mismo gráfico de interacción puede hacerse analizando los perfiles de la variable respuesta `C` dependiendo de los niveles de `A` y `B`: 
+
+```{r, message=FALSE, fig.width = 7, fig.height = 4.5, fig.align = 'center'}
+## fixing temperature
+with(datos, 
+    interaction.plot(A, B, C,
+                     las = 1,
+                     lty = 1,
+                     lwd = 2,
+                     col = 2:4,
+                     main = "C"))
+
+## same fixing material
+with(datos, 
+     interaction.plot(B, A, C,
+                      las = 1,
+                      lty = 1,
+                      lwd = 2,
+                      col = 2:4, 
+                      main = "C"))
+
+```
+
+Ahora, procedamos a calcular algunas medidas de tendencia central, posición y dispersión:
+
+```{r}
+##  summary statistics 
+with(datos, tapply(C, list(A, B), mean))
+with(datos, tapply(C, list(A, B), sd))
+```
+
+### Construcciión de la tabla ANOVA
+
+Ahora construimos la tabla ANOVA _incluyendo_ el término de interacción:
+
+```{r}
+## ANOVA with interaction
+fit_interaction <- aov(C ~ A*B, data = datos)
+anova(fit_interaction)
+```
+
+La conclusión de este primer modelo es que la interacción entre `A` y  `B`, definida como `A:B` en el resultado de `anova(fit)`, es **no** significativa al 0.05\%. 
+Asi mismo el factor B no es significativo.
+
+Puesto que la interacción y el factor B **no** son significativos, debemos remover estos términos del modelo y recalcularlo:
+
+```{r}
+## ANOVA with no interaction
+fit_no_interaction <- aov(C ~ A, data = datos)
+summary(fit_no_interaction)
+```
+
+
+
+La conclusión de la tabla ANOVA es que existe al menos un tipo de `A` para el que se producen resultados diferentes de la media global. 
+
+### Cuantificación del efecto
+Ahora procedemos a determinar la _la magnitud del efecto_ de cada nivel de `A`. Esto es posible a partir del objeto `fit`. Para ello utilizamos los estimadores de máxima verosimilitud obtenidos al emplear el método de mínimos cuadrados ordinarios en el modelo de Regresión Lineal Múltiple:
+
+```{r}
+## MLR for the batteries experiment
+fit_lm <- lm(C ~ A, data = datos)
+summary(fit_lm)
+```
+
+A partir de este resultado concluimos que utilizar el tipo de algoritmo `RF`   tiene el mayor efecto sobre el error, pues se reduce hasta en 0.304 unidades.
+
+TUCKEY
+
+```{r, message=FALSE,fig.width = 6, fig.height = 6, fig.align = 'center'}
+## verificamos si está disponibel el paquete "car"
+if(!require(car)) install.packages('car')
+require(car)
+
+## HSD test
+anova <- aov(fit_lm)
+TukeyHSD(anova, "A", ordered = TRUE)
+```
+
+
+```{r}
+## compute residuals 
+r <- rstudent(fit_lm)
+```
+
+
+```{r, message=FALSE, fig.width = 8, fig.height = 6}
+## verify if car package is available
+if(!require(car)) install.packages('car')
+require(car)
+
+## normality assumptions
+shapiro.test(r) 
+
+## varianza constante usando Breusch-Pagan
+car:::ncvTest(fit_lm)
+
+## independence using Durbin-Watson
+durbinWatsonTest(fit_lm)
+```
+
+Se inclumplen supuestos!!
+
+
+
+
